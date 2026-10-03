@@ -1,0 +1,16 @@
+# EKS ships without a default StorageClass on current versions, so the
+# PersistentVolumeClaims in ../ would stay Pending. gp3 is cheaper and faster
+# than gp2. Provisioned by the EBS CSI driver installed by Terraform/aws.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+parameters:
+  type: gp3
+  encrypted: "true"

@@ -1,13 +1,14 @@
-# GKE Autopilot overlay for the homelab manifests in ../ -- the originals are
-# untouched (the Jenkins/kind pipeline still uses them as-is). deploy-gcp.sh
+# Amazon EKS overlay for the homelab manifests in ../ -- the originals are
+# untouched (the Jenkins/kind pipeline still uses them as-is). deploy-eks.sh
 # fills in the __PLACEHOLDERS__ below and writes kustomization.yaml (which is
-# gitignored, since it contains your project ID and IP).
+# gitignored, since it contains your AWS account ID and IP).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # ingress.yaml is deliberately NOT listed: it assumes ingress-nginx on kind.
 # web-bff is exposed through a LoadBalancer Service instead (patched below).
 resources:
+  - storageclass-gp3.yaml
   - ../namespace.yaml
   - ../postgres.yaml
   - ../cassandra.yaml
@@ -54,7 +55,7 @@ images:
 patches:
   # The committed buzz-secrets holds homelab-only plaintext credentials
   # ("buzz_password", a guessable JWT signing key). Never ship those to a
-  # cluster with a public IP: drop it here, and deploy-gcp.sh creates the real
+  # cluster with a public endpoint: drop it here, and deploy-eks.sh creates the real
   # Secret from freshly generated random values instead.
   - patch: |-
       $patch: delete
@@ -114,26 +115,12 @@ patches:
         ports:
           - {port: 9093, nodePort: null}
 
-  # Autopilot sets limits = requests, so the kind manifest's 4Gi *limit* would
-  # become the request (and the bill) if left alone, while a 2Gi request
-  # would cap it at 2Gi and OOM-kill it (the JVM needs heap + off-heap:
-  # that's the exact failure seen on the homelab). 3Gi is the middle.
+  # Cassandra's JVM needs heap + off-heap: a 2Gi limit gets it OOM-killed
+  # (seen on the homelab). 3Gi fits alongside the services on t3.large nodes.
   - target: {kind: Deployment, name: cassandra}
     patch: |-
       - op: replace
         path: /spec/template/spec/containers/0/resources
         value:
-          requests: {cpu: "1", memory: 3Gi}
-          limits: {cpu: "1", memory: 3Gi}
-
-  # GCE persistent disks have a 10Gi minimum; ask for it explicitly rather
-  # than relying on the provisioner rounding 1-2Gi requests up.
-  - target: {kind: PersistentVolumeClaim, name: cassandra-data}
-    patch: |-
-      - {op: replace, path: /spec/resources/requests/storage, value: 10Gi}
-  - target: {kind: PersistentVolumeClaim, name: postgres-data}
-    patch: |-
-      - {op: replace, path: /spec/resources/requests/storage, value: 10Gi}
-  - target: {kind: PersistentVolumeClaim, name: media-uploads}
-    patch: |-
-      - {op: replace, path: /spec/resources/requests/storage, value: 10Gi}
+          requests: {cpu: 500m, memory: 3Gi}
+          limits: {memory: 3Gi}

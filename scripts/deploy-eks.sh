@@ -1,34 +1,39 @@
 #!/usr/bin/env bash
-# Deploy Darviq-Buzz to the GKE Autopilot cluster created by Terraform/gcp.
+# Deploy Darviq-Buzz to the Amazon EKS cluster created by Terraform/aws.
 #
-#   PROJECT_ID=my-project ALLOWED_CIDR=203.0.113.7/32 ./scripts/deploy-gcp.sh
+#   ALLOWED_CIDR=203.0.113.7/32 ./scripts/deploy-eks.sh
 #
-# Prerequisites: `gcloud auth login` done, `terraform apply` done in
-# Terraform/gcp, Docker running, kubectl installed. Safe to re-run: existing
+# Prerequisites: AWS CLI configured for the account (`aws sts get-caller-identity`
+# works), `terraform apply` done in Terraform/aws, Docker running, kubectl
+# installed. Safe to re-run: existing
 # secrets are reused, never rotated (Postgres is already initialised with them).
 #
 # Local dry run against a throwaway kind cluster (no GCP account needed) --
 # runs the same overlay, secret generation and ordering, skipping only what is
-# truly GCP-specific (gcloud, the registry push, the load-balancer wait):
+# truly AWS-specific (ECR login and push, kubeconfig, the load-balancer wait):
 #
 #   kind create cluster --name buzz-test
-#   LOCAL_KIND=buzz-test ./scripts/deploy-gcp.sh
+#   LOCAL_KIND=buzz-test ./scripts/deploy-eks.sh
 set -euo pipefail
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
 LOCAL_KIND="${LOCAL_KIND:-}"
 if [ -n "$LOCAL_KIND" ]; then
-  PROJECT_ID="${PROJECT_ID:-local}"; ALLOWED_CIDR="${ALLOWED_CIDR:-127.0.0.1/32}"
+  ALLOWED_CIDR="${ALLOWED_CIDR:-127.0.0.1/32}"
 else
-  : "${PROJECT_ID:?set PROJECT_ID}"
   : "${ALLOWED_CIDR:?set ALLOWED_CIDR to the CIDR allowed to reach the app, e.g. \$(curl -s ifconfig.me)/32}"
 fi
-REGION="${REGION:-us-central1}"
+REGION="${REGION:-ap-south-1}"
 CLUSTER="${CLUSTER:-buzz}"
 NS=darviq-buzz
 TAG="${TAG:-$(date +%Y%m%d-%H%M%S)}"
-if [ -n "$LOCAL_KIND" ]; then REGISTRY="buzz-local"; else REGISTRY="${REGION}-docker.pkg.dev/${PROJECT_ID}/buzz"; fi
+if [ -n "$LOCAL_KIND" ]; then REGISTRY="buzz-local"; ACCOUNT=local
+else
+  command -v aws >/dev/null || die "aws CLI not found on PATH"
+  ACCOUNT="$(aws sts get-caller-identity --query Account --output text)" || die "AWS CLI is not logged in"
+  REGISTRY="${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/buzz"
+fi
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # No TLS on this deployment, so passwords and session cookies travel in
@@ -37,15 +42,15 @@ if [ "$ALLOWED_CIDR" = "0.0.0.0/0" ] && [ "${I_UNDERSTAND_OPEN_TO_INTERNET:-}" !
   die "ALLOWED_CIDR=0.0.0.0/0 exposes an unencrypted login page to the internet. Set I_UNDERSTAND_OPEN_TO_INTERNET=yes to override."
 fi
 
-if [ -n "$LOCAL_KIND" ]; then NEEDED="docker kubectl kind"; else NEEDED="gcloud docker kubectl"; fi
+if [ -n "$LOCAL_KIND" ]; then NEEDED="docker kubectl kind"; else NEEDED="aws docker kubectl"; fi
 for t in $NEEDED; do command -v "$t" >/dev/null || die "$t not found on PATH"; done
 
 SERVICES="user-service social-graph-service post-service engagement-service story-service messaging-service feed-service notification-service media-service gateway web-bff"
 
-echo "==> Project=$PROJECT_ID region=$REGION registry=$REGISTRY tag=$TAG allowed=$ALLOWED_CIDR"
+echo "==> Account=$ACCOUNT region=$REGION registry=$REGISTRY tag=$TAG allowed=$ALLOWED_CIDR"
 
 echo "==> Building images"
-[ -n "$LOCAL_KIND" ] || gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+[ -n "$LOCAL_KIND" ] || aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "${REGISTRY%%/*}" >/dev/null
 for svc in $SERVICES; do
   echo "   - $svc"
   docker build -q -t "$REGISTRY/$svc:$TAG" "$ROOT/services/$svc" >/dev/null
@@ -60,7 +65,7 @@ echo "==> Connecting to the cluster"
 if [ -n "$LOCAL_KIND" ]; then
   kubectl config use-context "kind-$LOCAL_KIND"
 else
-  gcloud container clusters get-credentials "$CLUSTER" --region "$REGION" --project "$PROJECT_ID"
+  aws eks update-kubeconfig --name "$CLUSTER" --region "$REGION"
 fi
 
 echo "==> Namespace + secrets"
@@ -87,10 +92,10 @@ fi
 
 echo "==> Rendering overlay"
 sed -e "s|__REGISTRY__|${REGISTRY}|g" -e "s|__TAG__|${TAG}|g" -e "s|__ALLOWED_CIDR__|${ALLOWED_CIDR}|g" \
-  "$ROOT/k8s/gcp/kustomization.yaml.tpl" > "$ROOT/k8s/gcp/kustomization.yaml"
-apply() { kubectl kustomize "$ROOT/k8s/gcp" --load-restrictor=LoadRestrictionsNone | kubectl apply -f -; }
+  "$ROOT/k8s/eks/kustomization.yaml.tpl" > "$ROOT/k8s/eks/kustomization.yaml"
+apply() { kubectl kustomize "$ROOT/k8s/eks" --load-restrictor=LoadRestrictionsNone | kubectl apply -f -; }
 
-echo "==> Applying (first run: Autopilot provisions nodes, so this is slow)"
+echo "==> Applying (first run: EBS volumes and the load balancer are created, so this is slow)"
 apply
 
 echo "==> Waiting for datastores"
@@ -118,16 +123,16 @@ if [ -n "$LOCAL_KIND" ]; then
   exit 0
 fi
 
-echo "==> Waiting for the load balancer IP"
-IP=""
+echo "==> Waiting for the load balancer address"
+HOST=""
 for _ in $(seq 1 60); do
-  IP="$(kubectl -n "$NS" get svc web-bff -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
-  [ -n "$IP" ] && break
+  HOST="$(kubectl -n "$NS" get svc web-bff -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+  [ -n "$HOST" ] && break
   sleep 10
 done
-[ -n "$IP" ] || die "load balancer has no IP yet -- check: kubectl -n $NS get svc web-bff"
+[ -n "$HOST" ] || die "load balancer has no address yet -- check: kubectl -n $NS get svc web-bff"
 
 echo
-echo "Darviq-Buzz is up:  http://${IP}"
+echo "Darviq-Buzz is up:  http://${HOST}   (DNS can take a few minutes to resolve)"
 echo "Reachable only from: ${ALLOWED_CIDR}   (no TLS -- do not enter a password you reuse elsewhere)"
-echo "Tear down when done: PROJECT_ID=$PROJECT_ID ./scripts/teardown-gcp.sh"
+echo "Tear down when done: ./scripts/teardown-eks.sh"

@@ -3,7 +3,7 @@
 The backend of a social network, built as **11 microservices** to work through the problems large
 social platforms face: a social graph, precomputed feeds, polyglot persistence, event-driven
 fan-out and real alerting. It ships with a server-rendered web app, Docker Compose for local runs,
-Kubernetes manifests, a Jenkins pipeline, and Terraform for Google Kubernetes Engine (GKE).
+Kubernetes manifests, a Jenkins pipeline, and Terraform for Amazon EKS.
 
 Built by [Darviq Systems](https://darviq.com).
 
@@ -125,16 +125,23 @@ Prometheus, Alertmanager, an ingress and NetworkPolicies.
 
 - **Local cluster (kind):** `Jenkinsfile.homelab` builds all 11 images, loads them into a kind
   cluster and applies the manifests.
-- **Google Cloud (GKE Autopilot):** `Terraform/gcp` creates the cluster and an Artifact Registry
-  repository. `scripts/deploy-gcp.sh` builds and pushes the images, generates secrets and applies a
-  GKE overlay (`k8s/gcp`), exposing the web app through a load balancer restricted to the IP range
-  you allow.
+- **AWS (Amazon EKS):** `Terraform/aws` creates a VPC (private subnets for the nodes, one NAT
+  gateway), an EKS cluster with a managed node group, the EBS CSI driver for persistent volumes,
+  NetworkPolicy enforcement in the VPC CNI, and one ECR repository per service.
+  `scripts/deploy-eks.sh` builds and pushes the images, generates random secrets and applies an EKS
+  overlay (`k8s/eks`), exposing only the web app through a load balancer restricted to the IP range
+  you allow. Prometheus, Alertmanager and the RabbitMQ UI stay internal.
 
 ```bash
-cd Terraform/gcp && terraform init && terraform apply -var project_id=YOUR_PROJECT
-PROJECT_ID=YOUR_PROJECT ALLOWED_CIDR=$(curl -s ifconfig.me)/32 ./scripts/deploy-gcp.sh
-./scripts/teardown-gcp.sh   # remove it again
+cd Terraform/aws && terraform init && terraform apply      # about 15 minutes
+cd ../.. && ALLOWED_CIDR=$(curl -s ifconfig.me)/32 ./scripts/deploy-eks.sh
+./scripts/teardown-eks.sh                                   # remove everything when done
 ```
+
+The defaults (region `ap-south-1`, two `t3.large` nodes) are set in `Terraform/aws/variables.tf`.
+The cluster, nodes, NAT gateway and load balancer are billed by AWS while they run, so tear the
+stack down when you're not using it. You can rehearse the whole deploy without an AWS account
+against a local kind cluster: `LOCAL_KIND=buzz-test ./scripts/deploy-eks.sh`.
 
 ## Tested end to end
 
