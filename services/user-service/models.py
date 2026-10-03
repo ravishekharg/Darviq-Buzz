@@ -28,9 +28,9 @@ class User(Base):
     website = Column(String(200))
     joined_at = Column(DateTime, default=datetime.datetime.utcnow)
 
-    # Account type is chosen once at sign-up (like Instagram/Twitter's
-    # business-account toggle) rather than a separate ownable Page entity
-    # with multiple admins (Facebook's actual Pages model) -- deliberately
+    # Account type is chosen once at sign-up (a business-account toggle)
+    # rather than a separate ownable Page entity with multiple admins --
+    # deliberately
     # simpler scope, but genuinely functional: a business account is just a
     # User with these fields set, so it reuses every existing follow/post/
     # feed/discover code path for free instead of needing a parallel system.

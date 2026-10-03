@@ -101,9 +101,8 @@ def _accept_friend_request(sender: str, receiver: str) -> None:
     now = datetime.datetime.utcnow()
     Friendship.create(username=sender, friend_username=receiver, friends_since=now)
     Friendship.create(username=receiver, friend_username=sender, friends_since=now)
-    # Becoming friends also follows each other both ways, matching how
-    # Facebook's friend graph feeds the News Feed -- see the original
-    # app.py's _accept_friend_request for the same reasoning.
+    # Becoming friends also follows each other both ways, so each friend's
+    # posts reach the other's feed.
     Following.create(follower_username=sender, followed_username=receiver)
     Followers.create(followed_username=receiver, follower_username=sender)
     Following.create(follower_username=receiver, followed_username=sender)
