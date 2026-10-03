@@ -8,7 +8,7 @@
 # installed. Safe to re-run: existing
 # secrets are reused, never rotated (Postgres is already initialised with them).
 #
-# Local dry run against a throwaway kind cluster (no GCP account needed) --
+# Local dry run against a throwaway kind cluster (no AWS account needed) --
 # runs the same overlay, secret generation and ordering, skipping only what is
 # truly AWS-specific (ECR login and push, kubeconfig, the load-balancer wait):
 #
