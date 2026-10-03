@@ -159,4 +159,11 @@ forms missing their CSRF token, and repost comments not reaching the precomputed
 
 ## Documentation
 
-`Docs/Darviq-Buzz_HLD_v1.0.docx` is the high-level design document.
+The high-level design document: [PDF](Docs/Darviq-Buzz_HLD_v1.0.pdf) (readable in the browser) or
+[Word](Docs/Darviq-Buzz_HLD_v1.0.docx).
+
+## Licence
+
+Copyright © 2026 Darviq Systems. **All rights reserved.** The code is published for viewing and
+evaluation only; see [LICENSE](LICENSE). For licensing or a custom build, contact
+[hello@darviq.com](mailto:hello@darviq.com).
