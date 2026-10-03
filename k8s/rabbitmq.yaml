@@ -1,0 +1,98 @@
+# The Docker Desktop VM shares memory across every pod/container on this
+# single-node kind cluster; RabbitMQ's memory high-watermark alarm is
+# calculated against total *system* memory as it sees it, not this
+# container's cgroup limit -- raising the pod's memory limit alone did NOT
+# stop it from alarming and cleanly shutting down (exitCode 0, not a crash)
+# under load from Cassandra/Postgres on the same node. An absolute
+# watermark decouples the alarm from that (mis)detected total: it only
+# fires once RabbitMQ's own process usage crosses the value below,
+# regardless of what it thinks total memory is.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-config
+  namespace: darviq-buzz
+data:
+  rabbitmq.conf: |
+    vm_memory_high_watermark.absolute = 700MB
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: darviq-buzz
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3.13-management-alpine
+          ports:
+            - containerPort: 5672
+            - containerPort: 15672
+          envFrom:
+            - secretRef:
+                name: buzz-secrets
+          volumeMounts:
+            - name: config
+              mountPath: /etc/rabbitmq/conf.d/10-memory.conf
+              subPath: rabbitmq.conf
+          # timeoutSeconds matters as much as the delay/threshold below:
+          # rabbitmq-diagnostics starts its own short-lived BEAM VM per
+          # invocation just to RPC-ping the real node, which routinely takes
+          # longer than Kubernetes' 1s exec-probe default under any load --
+          # probes were failing because the *check* timed out, not because
+          # RabbitMQ was actually unhealthy (its own logs showed a clean
+          # SIGTERM mid-boot, not a crash).
+          # Measured directly on this box: the ping itself succeeds in well
+          # under a second once RabbitMQ is up (it boots in seconds), but the
+          # exec round-trip (spinning up a short-lived BEAM VM under this
+          # node's current disk/CPU contention) took 22s in a manual test --
+          # 8s was still not enough. 30s gives real margin without masking a
+          # genuine hang (failureThreshold still bounds total tolerance).
+          readinessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            initialDelaySeconds: 30
+            periodSeconds: 35
+            timeoutSeconds: 30
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            initialDelaySeconds: 90
+            periodSeconds: 35
+            timeoutSeconds: 30
+            failureThreshold: 8
+          resources:
+            requests: {cpu: 100m, memory: 512Mi}
+            limits: {cpu: 500m, memory: 1Gi}
+      volumes:
+        - name: config
+          configMap:
+            name: rabbitmq-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: darviq-buzz
+spec:
+  selector:
+    app: rabbitmq
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: 5672
+    - name: management
+      port: 15672
+      targetPort: 15672
+      nodePort: 31673
+  type: NodePort

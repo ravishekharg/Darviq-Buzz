@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}#{{ tag }} - Darviq Buzz{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>#{{ tag }}</h2>
+  {% if feed %}
+    {% for entry in feed %}{% include "_post_card.html" %}{% endfor %}
+  {% else %}
+    <div class="empty-state">No posts tagged #{{ tag }} yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

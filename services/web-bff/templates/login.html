@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Log in - Darviq Buzz{% endblock %}
+{% block body %}
+<div class="auth-wrapper">
+  <div class="auth-hero">
+    <div class="auth-hero-mark">
+      <svg viewBox="0 0 24 24" width="44" height="44" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M12 2C12 2 5 9 5 14.5C5 18.64 8.36 22 12.5 22C16.64 22 20 18.64 20 14.5C20 10 15 6 12 2Z" fill="white"/>
+        <circle cx="14.5" cy="9" r="2.1" fill="var(--accent)"/>
+      </svg>
+    </div>
+    <h1>buzz</h1>
+    <p>Connect with friends, family, and the small businesses around you.</p>
+  </div>
+  <div class="card auth-card">
+    <form method="post">
+      {{ form.hidden_tag() }}
+      <div class="form-group">
+        {{ form.username.label }}
+        {{ form.username(placeholder="Username") }}
+      </div>
+      <div class="form-group">
+        {{ form.password.label }}
+        {{ form.password(placeholder="Password") }}
+      </div>
+      <div class="form-group">
+        <label>{{ form.remember() }} {{ form.remember.label.text }}</label>
+      </div>
+      {{ form.submit(class="btn btn-block") }}
+    </form>
+  </div>
+  <p>New here? <a href="{{ url_for('register') }}">Create an account</a></p>
+</div>
+{% endblock %}

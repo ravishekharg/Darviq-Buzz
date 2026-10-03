@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Post by @{{ entry.post.username }} - Darviq Buzz{% endblock %}
+{% block content %}
+<div class="card">
+  {% include "_post_card.html" %}
+</div>
+
+<div class="card">
+  <strong>Repost with a comment</strong>
+  <form method="post" action="{{ url_for('repost', username=entry.post.username, ts=entry.post.url_id) }}" style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+    {{ repost_form.hidden_tag() }}
+    {{ repost_form.comment(placeholder="Add a comment (optional)", style="flex:1;") }}
+    <button class="btn" type="submit">Repost</button>
+  </form>
+</div>
+
+<div class="card">
+  <strong>Comments</strong>
+  {% for c in comments %}
+    <div class="comment" style="margin-top:0.6rem;">
+      <div class="avatar avatar-sm">{{ c.author.username[0]|upper }}</div>
+      <div class="comment-bubble">
+        <span class="comment-author"><a href="{{ url_for('profile', username=c.author.username) }}">@{{ c.author.username }}</a></span>
+        {{ c.content }}
+      </div>
+    </div>
+  {% else %}
+    <div class="empty-state">No comments yet.</div>
+  {% endfor %}
+
+  <form method="post" action="{{ url_for('add_comment', username=entry.post.username, ts=entry.post.url_id) }}" style="display:flex; gap:0.5rem; margin-top:0.8rem;">
+    {{ comment_form.hidden_tag() }}
+    {{ comment_form.content(placeholder="Write a comment...", style="flex:1;") }}
+    <button class="btn" type="submit">Comment</button>
+  </form>
+</div>
+{% endblock %}

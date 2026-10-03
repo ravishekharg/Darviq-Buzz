@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Messages - Darviq Buzz{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Messages</h2>
+  {% if conversations %}
+    {% for c in conversations %}
+      <a class="conversation-row" href="{{ url_for('messages_thread', other_username=c.other_username) }}" style="color:inherit;">
+        <div class="avatar">{{ c.other_username[0]|upper }}</div>
+        <div style="flex:1;">
+          <div><strong>@{{ c.other_username }}</strong></div>
+          <div class="preview">{{ c.last_message_preview }}</div>
+        </div>
+      </a>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">No conversations yet. Visit someone's profile and click Message.</div>
+  {% endif %}
+</div>
+{% endblock %}

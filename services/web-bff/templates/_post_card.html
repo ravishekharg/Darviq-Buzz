@@ -1,0 +1,56 @@
+{% set post = entry.post %}
+{% set url_id = post.url_id %}
+<div class="post-card">
+  {% if entry.type == 'repost' %}
+    <div class="repost-banner">🔁 <a href="{{ url_for('profile', username=entry.reposted_by) }}">@{{ entry.reposted_by }}</a> reposted
+      {% if entry.repost_comment %}&mdash; "{{ entry.repost_comment }}"{% endif %}
+    </div>
+  {% endif %}
+
+  <div class="post-header">
+    <div class="avatar">
+      {% if entry.author.avatar_url %}<img src="{{ entry.author.avatar_url }}" alt="">{% else %}{{ entry.author.username[0]|upper }}{% endif %}
+    </div>
+    <div>
+      <div><a href="{{ url_for('profile', username=post.username) }}"><strong>@{{ post.username }}</strong></a></div>
+      <div class="post-meta">{{ post.date_posted[:16].replace('T', ' ') }}</div>
+    </div>
+  </div>
+
+  <div class="post-content">{{ post.content|linkify }}</div>
+  {% if post.image_url %}<img class="post-image" src="{{ post.image_url }}" alt="">{% endif %}
+
+  {% if entry.like_count or entry.comment_count %}
+  <div class="reaction-summary">
+    {% for t in entry.top_reaction_types %}{{ reaction_types.get(t, '👍') }}{% endfor %}
+    {% if entry.like_count %}{{ entry.like_count }}{% endif %}
+    {% if entry.comment_count %} &middot; <a href="{{ url_for('post_detail', username=post.username, ts=url_id) }}">{{ entry.comment_count }} comment{{ 's' if entry.comment_count != 1 else '' }}</a>{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="post-actions">
+    <div style="position: relative;">
+      <form method="post" action="{{ url_for('like_post', username=post.username, ts=url_id) }}" class="react-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="reaction" value="{{ entry.my_reaction or 'like' }}">
+        <button type="submit" class="action-btn react-btn {{ 'active' if entry.is_liked else '' }}">
+          {% if entry.is_liked %}{{ reaction_types.get(entry.my_reaction, '👍') }} Reacted{% else %}👍 Like{% endif %}
+        </button>
+      </form>
+      <div class="reaction-picker">
+        {% for type, emoji in reaction_types.items() %}
+          <form method="post" action="{{ url_for('like_post', username=post.username, ts=url_id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="reaction" value="{{ type }}">
+            <button type="submit" title="{{ type }}">{{ emoji }}</button>
+          </form>
+        {% endfor %}
+      </div>
+    </div>
+    <a class="action-btn" href="{{ url_for('post_detail', username=post.username, ts=url_id) }}">💬 Comment</a>
+    <form method="post" action="{{ url_for('repost', username=post.username, ts=url_id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="action-btn">🔁 Repost</button>
+    </form>
+  </div>
+</div>

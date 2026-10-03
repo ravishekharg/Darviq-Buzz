@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Notifications - Darviq Buzz{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Notifications</h2>
+  {% for n in notifications %}
+    <div class="notification-row {{ 'unread' if not n.is_read else '' }}">
+      <div class="avatar avatar-sm">{{ n.actor.username[0]|upper }}</div>
+      <div>
+        <a href="{{ url_for('profile', username=n.actor.username) }}"><strong>@{{ n.actor.username }}</strong></a>
+        {% if n.notif_type == 'follow' %} started following you.
+        {% elif n.notif_type == 'friend_request' %} sent you a friend request.
+        {% elif n.notif_type == 'friend_accept' %} accepted your friend request.
+        {% elif n.notif_type == 'like' %} reacted to your post.
+        {% elif n.notif_type == 'comment' %} commented on your post.
+        {% elif n.notif_type == 'repost' %} reposted your post.
+        {% endif %}
+        {% if n.target_ref and n.notif_type in ['like', 'comment', 'repost'] %}
+          {% set parts = n.target_ref.split(':') %}
+          <a href="{{ url_for('post_detail', username=parts[0], ts=parts[1]) }}">View post</a>
+        {% endif %}
+        <div class="post-meta">{{ n.created_at[:16].replace('T', ' ') }}</div>
+      </div>
+    </div>
+  {% else %}
+    <div class="empty-state">No notifications yet.</div>
+  {% endfor %}
+</div>
+{% endblock %}

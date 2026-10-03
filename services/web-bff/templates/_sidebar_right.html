@@ -1,0 +1,15 @@
+{% if current_username and sidebar_suggestions %}
+<div class="card">
+  <strong>People you may know</strong>
+  {% for u in sidebar_suggestions %}
+    <div class="user-row">
+      <div class="avatar avatar-sm">{{ u.username[0]|upper }}</div>
+      <div class="name"><a href="{{ url_for('profile', username=u.username) }}">@{{ u.username }}</a></div>
+      <form method="post" action="{{ url_for('follow', username=u.username) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm" type="submit">Follow</button>
+      </form>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}

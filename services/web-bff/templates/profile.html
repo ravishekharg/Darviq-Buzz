@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}@{{ profile_user.username }} - Darviq Buzz{% endblock %}
+{% set is_business = profile_user.account_type == 'business' %}
+
+{% block body %}
+<div class="profile-cover" style="{% if profile_user.cover_url %}background-image:url('{{ profile_user.cover_url }}'); background-size:cover; background-repeat:no-repeat;{% endif %}">
+  <div class="profile-cover-overlay"></div>
+  <div class="profile-header-content">
+    <div class="avatar profile-avatar {{ 'profile-avatar-business' if is_business }}">
+      {% if profile_user.avatar_url %}<img src="{{ profile_user.avatar_url }}" alt="">{% else %}{{ profile_user.username[0]|upper }}{% endif %}
+    </div>
+    <div class="profile-header-text">
+      <h1>{% if is_business %}🏢{% endif %} @{{ profile_user.username }}</h1>
+      {% if is_business %}
+        <div class="business-category-badge">{{ profile_user.business_category }}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+  <aside class="sidebar-left">
+    <div class="card" style="text-align:center;">
+      {% if profile_user.bio %}<p style="color:var(--text-muted); font-size:0.9rem;">{{ profile_user.bio }}</p>{% endif %}
+
+      <div style="display:flex; justify-content:space-around; margin:0.8rem 0; font-size:0.85rem;">
+        <div><strong>{{ follower_count }}</strong><br>{{ 'Followers' if not is_business else 'Likes' }}</div>
+        <div><strong>{{ following_count }}</strong><br>Following</div>
+        {% if not is_business %}<div><strong>{{ friend_count }}</strong><br>Friends</div>{% endif %}
+      </div>
+
+      {% if is_self %}
+        <a class="btn btn-secondary btn-block" href="{{ url_for('edit_profile') }}">Edit {{ 'Page' if is_business else 'profile' }}</a>
+      {% else %}
+        <div style="display:flex; gap:0.4rem;">
+          {% if is_following %}
+            <form method="post" action="{{ url_for('unfollow_route', username=profile_user.username) }}" style="flex:1;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-secondary btn-block" type="submit">{{ '✓ Liked' if is_business else 'Following' }}</button>
+            </form>
+          {% else %}
+            <form method="post" action="{{ url_for('follow', username=profile_user.username) }}" style="flex:1;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-block" type="submit">{{ '👍 Like Page' if is_business else 'Follow' }}</button>
+            </form>
+          {% endif %}
+
+          {% if not is_business %}
+          {% if friendship_status == 'friends' %}
+            <form method="post" action="{{ url_for('unfriend', username=profile_user.username) }}" style="flex:1;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-secondary btn-block" type="submit">Unfriend</button>
+            </form>
+          {% elif friendship_status == 'request_sent' %}
+            <form method="post" action="{{ url_for('cancel_friend_request', username=profile_user.username) }}" style="flex:1;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-secondary btn-block" type="submit">Cancel request</button>
+            </form>
+          {% elif friendship_status == 'request_received' %}
+            <form method="post" action="{{ url_for('accept_friend_request', username=profile_user.username) }}" style="flex:1;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-block" type="submit">Accept request</button>
+            </form>
+          {% else %}
+            <form method="post" action="{{ url_for('send_friend_request', username=profile_user.username) }}" style="flex:1;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-block" type="submit">Add friend</button>
+            </form>
+          {% endif %}
+          {% endif %}
+        </div>
+        <a class="btn btn-secondary btn-block" style="margin-top:0.4rem;" href="{{ url_for('messages_thread', other_username=profile_user.username) }}">{{ '✉️ Contact' if is_business else 'Message' }}</a>
+      {% endif %}
+    </div>
+
+    {% if is_business %}
+    <div class="card business-info-card">
+      <strong>🏢 Business info</strong>
+      <ul style="list-style:none; padding:0; font-size:0.88rem; color:var(--text-muted);">
+        <li>🏷️ {{ profile_user.business_category }}</li>
+        {% if profile_user.business_phone %}<li>📞 {{ profile_user.business_phone }}</li>{% endif %}
+        {% if profile_user.business_address %}<li>📍 {{ profile_user.business_address }}</li>{% endif %}
+        {% if profile_user.website %}<li>🔗 <a href="{{ profile_user.website }}">{{ profile_user.website }}</a></li>{% endif %}
+      </ul>
+    </div>
+    {% else %}
+    <div class="card">
+      <strong>About</strong>
+      <ul style="list-style:none; padding:0; font-size:0.88rem; color:var(--text-muted);">
+        {% if profile_user.work %}<li>💼 {{ profile_user.work }}</li>{% endif %}
+        {% if profile_user.education %}<li>🎓 {{ profile_user.education }}</li>{% endif %}
+        {% if profile_user.current_city %}<li>📍 Lives in {{ profile_user.current_city }}</li>{% endif %}
+        {% if profile_user.hometown %}<li>🏠 From {{ profile_user.hometown }}</li>{% endif %}
+        {% if profile_user.relationship_status %}<li>💞 {{ profile_user.relationship_status.replace('_', ' ')|title }}</li>{% endif %}
+        {% if profile_user.website %}<li>🔗 <a href="{{ profile_user.website }}">{{ profile_user.website }}</a></li>{% endif %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if friends_preview and not is_business %}
+    <div class="card">
+      <strong>Friends</strong>
+      <a href="{{ url_for('friends_list', username=profile_user.username) }}" style="float:right; font-size:0.85rem;">See all</a>
+      <div class="user-grid" style="margin-top:0.6rem;">
+        {% for f in friends_preview %}
+          <a class="user-tile" href="{{ url_for('profile', username=f.username) }}">
+            <div class="avatar">{{ f.username[0]|upper }}</div>
+            <div style="font-size:0.8rem; color:var(--text);">@{{ f.username }}</div>
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </aside>
+  <main>
+    <div class="card">
+      {% if feed %}
+        {% for entry in feed %}{% include "_post_card.html" %}{% endfor %}
+      {% else %}
+        <div class="empty-state">No posts yet.</div>
+      {% endif %}
+    </div>
+  </main>
+  <aside class="sidebar-right"></aside>
+</div>
+{% endblock %}

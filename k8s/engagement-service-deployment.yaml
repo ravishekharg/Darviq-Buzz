@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: engagement-service
+  namespace: darviq-buzz
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: engagement-service
+  template:
+    metadata:
+      labels:
+        app: engagement-service
+    spec:
+      # Mitigates a confirmed live issue: glibc's parallel A/AAAA DNS
+      # queries occasionally race under load, one leg silently drops,
+      # and the resolver falls through to a bare unqualified query that
+      # CoreDNS can't handle and forwards upstream, timing out. This is
+      # the standard Kubernetes-documented mitigation.
+      dnsConfig:
+        options:
+          - name: single-request-reopen
+      containers:
+        - name: engagement-service
+          image: localhost:5050/darviq-buzz-engagement-service:build-3
+          ports:
+            - containerPort: 5004
+          env:
+            - {name: PORT, value: "5004"}
+            - {name: CASSANDRA_CONTACT_POINTS, value: "cassandra"}
+            - {name: CQLENG_ALLOW_SCHEMA_MANAGEMENT, value: "1"}
+            - name: RABBITMQ_URL
+              valueFrom: {secretKeyRef: {name: buzz-secrets, key: RABBITMQ_URL}}
+          readinessProbe:
+            httpGet: {path: /health, port: 5004}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: 5004}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+            limits: {cpu: 200m, memory: 192Mi}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}@{{ profile_user.username }}'s friends - Darviq Buzz{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>@{{ profile_user.username }}'s friends</h2>
+  {% if friends %}
+    <div class="user-grid">
+      {% for f in friends %}
+        <a class="user-tile" href="{{ url_for('profile', username=f.username) }}">
+          <div class="avatar">{{ f.username[0]|upper }}</div>
+          <div style="font-size:0.85rem; color:var(--text);">@{{ f.username }}</div>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">No friends yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

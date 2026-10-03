@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}@{{ other_username }} - Messages{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>@{{ other_username }}</h2>
+  <div class="message-thread" id="message-thread" data-other="{{ other_username }}" data-latest="{{ latest_id }}">
+    {% for m in history %}
+      <div class="message-bubble {{ 'mine' if m.sender == current_username else 'theirs' }}">
+        {{ m.content }}
+        <div class="message-time">{{ m.sent_at }}</div>
+      </div>
+    {% endfor %}
+  </div>
+  <form method="post" style="display:flex; gap:0.5rem; margin-top:0.6rem;">
+    {{ form.hidden_tag() }}
+    {{ form.content(placeholder="Type a message...", style="flex:1;") }}
+    <button class="btn" type="submit">Send</button>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>window.CURRENT_USERNAME = {{ current_username|tojson }};</script>
+<script src="{{ url_for('static', filename='js/message-poll.js') }}"></script>
+{% endblock %}

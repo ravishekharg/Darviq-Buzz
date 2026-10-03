@@ -1,0 +1,87 @@
+groups:
+  - name: service-availability
+    rules:
+      # Short `for:` (15s) deliberately, unlike the other rules here -- this
+      # is the one meant to be exercised live in a homelab/demo session
+      # (stop a container, watch it fire within ~25s) rather than tuned for
+      # production noise tolerance.
+      - alert: ServiceDown
+        expr: up == 0
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} is down (Prometheus scrape failing)"
+
+  - name: buzz-http-slo
+    rules:
+      - record: buzz:http_requests:rate5m
+        expr: sum(rate(http_requests_total[5m])) by (service)
+      - record: buzz:http_requests_errors:rate5m
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) by (service)
+      # Multi-window burn-rate pattern -- a 99.9% availability target.
+      - alert: BuzzAvailabilitySLOFastBurn
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m])) by (service)
+            /
+            sum(rate(http_requests_total[5m])) by (service)
+          ) > (14 * (1 - 0.999))
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }}: availability SLO (99.9%) burning fast (14x)"
+      - alert: BuzzAvailabilitySLOSlowBurn
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[1h])) by (service)
+            /
+            sum(rate(http_requests_total[1h])) by (service)
+          ) > (6 * (1 - 0.999))
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }}: availability SLO (99.9%) burning slow (6x)"
+      - alert: BuzzLatencySLOBreach
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le, service)
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }}: P99 latency above the 1s SLO target"
+
+  - name: buzz-async-pipelines
+    rules:
+      # Both of these use rate(...) == 0, which cannot distinguish "broken"
+      # from "genuinely no events happened in this window" -- a known,
+      # accepted false-positive shape for a low-traffic app.
+      # Real tuning would gate this on a minimum upstream event rate too.
+      - alert: FeedFanoutStalled
+        expr: rate(feed_events_consumed_total[15m]) == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "feed-service has fanned out no post/repost events in 15m -- check RabbitMQ connectivity"
+      - alert: NotificationConsumerStalled
+        expr: rate(notification_events_consumed_total[15m]) == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "notification-service has consumed no events in 15m -- check RabbitMQ connectivity"
+
+  - name: buzz-media
+    rules:
+      - alert: MediaS3FallbackRateHigh
+        expr: rate(media_s3_fallback_total[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "media-service is falling back to local disk -- S3 credentials/bucket likely misconfigured (expected in local dev without real AWS access)"

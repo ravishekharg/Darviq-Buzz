@@ -1,0 +1,254 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: buzz-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: buzz
+      POSTGRES_PASSWORD: buzz_password
+      POSTGRES_DB: buzz
+    ports:
+      - "5432:5432"
+    volumes:
+      - buzz_postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U buzz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  cassandra:
+    image: cassandra:latest
+    container_name: buzz-cassandra
+    ports:
+      - "9042:9042"
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe keyspaces' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    volumes:
+      - buzz_cassandra_data:/var/lib/cassandra
+
+  keyspace-init:
+    image: cassandra:latest
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    entrypoint:
+      - cqlsh
+      - cassandra
+      - -e
+      - >-
+        CREATE KEYSPACE IF NOT EXISTS social_graph WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+        CREATE KEYSPACE IF NOT EXISTS posts WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+        CREATE KEYSPACE IF NOT EXISTS feed WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+        CREATE KEYSPACE IF NOT EXISTS engagement WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+        CREATE KEYSPACE IF NOT EXISTS stories WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+        CREATE KEYSPACE IF NOT EXISTS messaging WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: buzz-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: buzz
+      RABBITMQ_DEFAULT_PASS: buzz_password
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  user-service:
+    build: ./services/user-service
+    environment:
+      DATABASE_URL: "postgresql://buzz:buzz_password@postgres:5432/buzz_users"
+      JWT_SECRET: "dev-only-change-me"
+      PORT: 5001
+    ports:
+      - "5001:5001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  social-graph-service:
+    build: ./services/social-graph-service
+    environment:
+      CASSANDRA_CONTACT_POINTS: cassandra
+      CQLENG_ALLOW_SCHEMA_MANAGEMENT: "1"
+      RABBITMQ_URL: "amqp://buzz:buzz_password@rabbitmq:5672"
+      PORT: 5002
+    ports:
+      - "5002:5002"
+    depends_on:
+      keyspace-init:
+        condition: service_completed_successfully
+
+  post-service:
+    build: ./services/post-service
+    environment:
+      CASSANDRA_CONTACT_POINTS: cassandra
+      CQLENG_ALLOW_SCHEMA_MANAGEMENT: "1"
+      RABBITMQ_URL: "amqp://buzz:buzz_password@rabbitmq:5672"
+      PORT: 5003
+    ports:
+      - "5003:5003"
+    depends_on:
+      keyspace-init:
+        condition: service_completed_successfully
+
+  engagement-service:
+    build: ./services/engagement-service
+    environment:
+      CASSANDRA_CONTACT_POINTS: cassandra
+      CQLENG_ALLOW_SCHEMA_MANAGEMENT: "1"
+      RABBITMQ_URL: "amqp://buzz:buzz_password@rabbitmq:5672"
+      PORT: 5004
+    ports:
+      - "5004:5004"
+    depends_on:
+      keyspace-init:
+        condition: service_completed_successfully
+
+  story-service:
+    build: ./services/story-service
+    environment:
+      CASSANDRA_CONTACT_POINTS: cassandra
+      CQLENG_ALLOW_SCHEMA_MANAGEMENT: "1"
+      PORT: 5005
+    ports:
+      - "5005:5005"
+    depends_on:
+      keyspace-init:
+        condition: service_completed_successfully
+
+  messaging-service:
+    build: ./services/messaging-service
+    environment:
+      CASSANDRA_CONTACT_POINTS: cassandra
+      CQLENG_ALLOW_SCHEMA_MANAGEMENT: "1"
+      PORT: 5006
+    ports:
+      - "5006:5006"
+    depends_on:
+      keyspace-init:
+        condition: service_completed_successfully
+
+  feed-service:
+    build: ./services/feed-service
+    environment:
+      CASSANDRA_CONTACT_POINTS: cassandra
+      CQLENG_ALLOW_SCHEMA_MANAGEMENT: "1"
+      RABBITMQ_URL: "amqp://buzz:buzz_password@rabbitmq:5672"
+      SOCIAL_GRAPH_SERVICE_URL: "http://social-graph-service:5002"
+      PORT: 5007
+    ports:
+      - "5007:5007"
+    depends_on:
+      keyspace-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+
+  notification-service:
+    build: ./services/notification-service
+    environment:
+      DATABASE_URL: "postgresql://buzz:buzz_password@postgres:5432/buzz_notifications"
+      RABBITMQ_URL: "amqp://buzz:buzz_password@rabbitmq:5672"
+      PORT: 5008
+    ports:
+      - "5008:5008"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  media-service:
+    build: ./services/media-service
+    environment:
+      DATABASE_URL: "postgresql://buzz:buzz_password@postgres:5432/buzz_media"
+      S3_BUCKET_NAME: "darviq-social-media-assets"
+      PORT: 5009
+    ports:
+      - "5009:5009"
+    volumes:
+      - ./services/media-service/static/uploads:/app/static/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  gateway:
+    build: ./services/gateway
+    environment:
+      JWT_SECRET: "dev-only-change-me"
+      USER_SERVICE_URL: "http://user-service:5001"
+      SOCIAL_GRAPH_SERVICE_URL: "http://social-graph-service:5002"
+      POST_SERVICE_URL: "http://post-service:5003"
+      ENGAGEMENT_SERVICE_URL: "http://engagement-service:5004"
+      STORY_SERVICE_URL: "http://story-service:5005"
+      MESSAGING_SERVICE_URL: "http://messaging-service:5006"
+      FEED_SERVICE_URL: "http://feed-service:5007"
+      NOTIFICATION_SERVICE_URL: "http://notification-service:5008"
+      MEDIA_SERVICE_URL: "http://media-service:5009"
+      PORT: 5000
+    ports:
+      - "5000:5000"
+    depends_on:
+      - user-service
+      - social-graph-service
+      - post-service
+      - engagement-service
+      - story-service
+      - messaging-service
+      - feed-service
+      - notification-service
+      - media-service
+
+  web-bff:
+    build: ./services/web-bff
+    environment:
+      SECRET_KEY: "dev-only-change-me"
+      USER_SERVICE_URL: "http://user-service:5001"
+      SOCIAL_GRAPH_SERVICE_URL: "http://social-graph-service:5002"
+      POST_SERVICE_URL: "http://post-service:5003"
+      ENGAGEMENT_SERVICE_URL: "http://engagement-service:5004"
+      STORY_SERVICE_URL: "http://story-service:5005"
+      MESSAGING_SERVICE_URL: "http://messaging-service:5006"
+      FEED_SERVICE_URL: "http://feed-service:5007"
+      NOTIFICATION_SERVICE_URL: "http://notification-service:5008"
+      MEDIA_SERVICE_URL: "http://media-service:5009"
+      PORT: 5010
+    ports:
+      - "8000:5010"
+    depends_on:
+      - gateway
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: buzz-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - alertmanager
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: buzz-alertmanager
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+
+volumes:
+  buzz_postgres_data:
+  buzz_cassandra_data:

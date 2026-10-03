@@ -1,0 +1,122 @@
+# Single-node Cassandra -- fine for a homelab. keyspace-init is a Job (not
+# applied automatically by every deploy) since it only needs to run once;
+# Jenkinsfile.homelab deletes+reapplies it idempotently.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cassandra-data
+  namespace: darviq-buzz
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cassandra
+  namespace: darviq-buzz
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: cassandra
+  template:
+    metadata:
+      labels:
+        app: cassandra
+    spec:
+      containers:
+        - name: cassandra
+          image: cassandra:latest
+          # The image's default heap sizing calculates a fraction of the
+          # node's total visible memory, not this container's cgroup limit --
+          # on a shared homelab node that wildly overshoots and gets
+          # OOMKilled. Capping both explicitly is required, not optional,
+          # for Cassandra in a resource-limited container.
+          env:
+            - {name: MAX_HEAP_SIZE, value: "1024M"}
+            - {name: HEAP_NEWSIZE, value: "256M"}
+          ports:
+            - containerPort: 9042
+          # Generous timings -- this node is shared with Postgres/RabbitMQ/11
+          # app services; a tight liveness probe killed Cassandra mid-boot
+          # (SIGTERM, exit 143) on this box before it finished initializing,
+          # repeatedly, well before the container was ever actually OOM.
+          # timeoutSeconds matters as much as the delay/threshold below: cqlsh
+          # spins up its own Python runtime + CQL connection per invocation,
+          # which routinely takes longer than Kubernetes' 1s exec-probe
+          # default under any load at all -- probes were failing because the
+          # *check* timed out, not because Cassandra was actually unhealthy.
+          readinessProbe:
+            exec:
+              command: ["cqlsh", "-e", "describe keyspaces"]
+            initialDelaySeconds: 45
+            periodSeconds: 35
+            timeoutSeconds: 30
+            failureThreshold: 10
+          livenessProbe:
+            exec:
+              command: ["cqlsh", "-e", "describe keyspaces"]
+            initialDelaySeconds: 240
+            periodSeconds: 35
+            timeoutSeconds: 30
+            failureThreshold: 8
+          resources:
+            requests: {cpu: 1000m, memory: 2Gi}
+            limits: {cpu: 2000m, memory: 4Gi} # bumped CPU -- node has 12 cores free; more CPU shortens the JVM-startup + commitlog-replay window the probes have to survive
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/cassandra
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cassandra-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cassandra
+  namespace: darviq-buzz
+spec:
+  selector:
+    app: cassandra
+  ports:
+    - port: 9042
+      targetPort: 9042
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keyspace-init
+  namespace: darviq-buzz
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      # Without this, the Job's pod only gets the auto-generated job-name
+      # label -- cassandra-allow-app-services's NetworkPolicy matches on
+      # app=keyspace-init specifically, so traffic was silently dropped
+      # (connection timeout) despite keyspace-init already being listed
+      # as an allowed source in that policy.
+      labels:
+        app: keyspace-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: keyspace-init
+          image: cassandra:latest
+          command:
+            - cqlsh
+            - cassandra
+            - -e
+            - >-
+              CREATE KEYSPACE IF NOT EXISTS social_graph WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+              CREATE KEYSPACE IF NOT EXISTS posts WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+              CREATE KEYSPACE IF NOT EXISTS feed WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+              CREATE KEYSPACE IF NOT EXISTS engagement WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+              CREATE KEYSPACE IF NOT EXISTS stories WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+              CREATE KEYSPACE IF NOT EXISTS messaging WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};

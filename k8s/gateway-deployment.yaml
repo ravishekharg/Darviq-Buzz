@@ -1,0 +1,53 @@
+# Placeholder image tag, sed-replaced at deploy time by Jenkinsfile.homelab.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: darviq-buzz
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      # Mitigates a confirmed live issue: glibc's parallel A/AAAA DNS
+      # queries occasionally race under load, one leg silently drops,
+      # and the resolver falls through to a bare unqualified query that
+      # CoreDNS can't handle and forwards upstream, timing out. This is
+      # the standard Kubernetes-documented mitigation.
+      dnsConfig:
+        options:
+          - name: single-request-reopen
+      containers:
+        - name: gateway
+          image: localhost:5050/darviq-buzz-gateway:build-4
+          ports:
+            - containerPort: 5000
+          env:
+            - {name: PORT, value: "5000"}
+            - {name: USER_SERVICE_URL, value: "http://user-service:5001"}
+            - {name: SOCIAL_GRAPH_SERVICE_URL, value: "http://social-graph-service:5002"}
+            - {name: POST_SERVICE_URL, value: "http://post-service:5003"}
+            - {name: ENGAGEMENT_SERVICE_URL, value: "http://engagement-service:5004"}
+            - {name: STORY_SERVICE_URL, value: "http://story-service:5005"}
+            - {name: MESSAGING_SERVICE_URL, value: "http://messaging-service:5006"}
+            - {name: FEED_SERVICE_URL, value: "http://feed-service:5007"}
+            - {name: NOTIFICATION_SERVICE_URL, value: "http://notification-service:5008"}
+            - {name: MEDIA_SERVICE_URL, value: "http://media-service:5009"}
+            - name: JWT_SECRET
+              valueFrom: {secretKeyRef: {name: buzz-secrets, key: JWT_SECRET}}
+          readinessProbe:
+            httpGet: {path: /api/health, port: 5000}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /api/health, port: 5000}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+            limits: {cpu: 200m, memory: 192Mi}

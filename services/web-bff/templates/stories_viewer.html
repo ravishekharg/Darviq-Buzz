@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}@{{ story_username }}'s stories - Darviq Buzz{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>@{{ story_username }}'s stories</h2>
+  {% for s in stories %}
+    <div class="post-card">
+      <div class="post-meta">{{ s.created_at[:16].replace('T', ' ') }}</div>
+      {% if s.image_url %}<img class="post-image" src="{{ s.image_url }}" alt="">{% endif %}
+      {% if s.content %}<div class="post-content">{{ s.content }}</div>{% endif %}
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

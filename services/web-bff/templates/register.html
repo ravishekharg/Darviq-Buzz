@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Sign up - Darviq Buzz{% endblock %}
+{% block body %}
+<div class="auth-wrapper">
+  <div class="auth-hero">
+    <div class="auth-hero-mark">
+      <svg viewBox="0 0 24 24" width="44" height="44" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M12 2C12 2 5 9 5 14.5C5 18.64 8.36 22 12.5 22C16.64 22 20 18.64 20 14.5C20 10 15 6 12 2Z" fill="white"/>
+        <circle cx="14.5" cy="9" r="2.1" fill="var(--accent)"/>
+      </svg>
+    </div>
+    <h1>buzz</h1>
+    <p>Connect with friends, family, and the small businesses around you.</p>
+  </div>
+  <div class="card auth-card">
+    <form method="post" id="register-form">
+      {{ form.hidden_tag() }}
+      <div class="form-group">
+        {{ form.username.label }}
+        {{ form.username(placeholder="Choose a username") }}
+        {% for e in form.username.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="form-group">
+        {{ form.password.label }}
+        {{ form.password(placeholder="Password") }}
+        <div class="field-hint">Must be 10+ characters, with an uppercase letter, a lowercase letter, a digit, and a special character.</div>
+        {% for e in form.password.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="form-group">
+        {{ form.confirm_password.label }}
+        {{ form.confirm_password(placeholder="Confirm password") }}
+        {% for e in form.confirm_password.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+
+      <div class="form-group">
+        {{ form.account_type.label }}
+        {{ form.account_type(id="account_type") }}
+      </div>
+
+      <div id="business-fields" class="business-fields">
+        <div class="business-fields-title">🏢 Tell customers about your business</div>
+        <div class="form-group">
+          {{ form.business_category.label }}
+          {{ form.business_category() }}
+          {% for e in form.business_category.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="form-group">
+          {{ form.business_phone.label }}
+          {{ form.business_phone(placeholder="+1 555 123 4567") }}
+        </div>
+        <div class="form-group">
+          {{ form.business_address.label }}
+          {{ form.business_address(placeholder="123 Main St, Springfield") }}
+        </div>
+      </div>
+
+      {{ form.submit(class="btn btn-block") }}
+    </form>
+  </div>
+  <p>Already have an account? <a href="{{ url_for('login') }}">Log in</a></p>
+</div>
+<script>
+  (function () {
+    var select = document.getElementById('account_type');
+    var panel = document.getElementById('business-fields');
+    function sync() { panel.hidden = select.value !== 'business'; }
+    select.addEventListener('change', sync);
+    sync();
+  })();
+</script>
+{% endblock %}

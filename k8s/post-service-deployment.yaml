@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: post-service
+  namespace: darviq-buzz
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: post-service
+  template:
+    metadata:
+      labels:
+        app: post-service
+    spec:
+      # Mitigates a confirmed live issue: glibc's parallel A/AAAA DNS
+      # queries occasionally race under load, one leg silently drops,
+      # and the resolver falls through to a bare unqualified query that
+      # CoreDNS can't handle and forwards upstream, timing out. This is
+      # the standard Kubernetes-documented mitigation.
+      dnsConfig:
+        options:
+          - name: single-request-reopen
+      containers:
+        - name: post-service
+          image: localhost:5050/darviq-buzz-post-service:build-3
+          ports:
+            - containerPort: 5003
+          env:
+            - {name: PORT, value: "5003"}
+            - {name: CASSANDRA_CONTACT_POINTS, value: "cassandra"}
+            - {name: CQLENG_ALLOW_SCHEMA_MANAGEMENT, value: "1"}
+            - name: RABBITMQ_URL
+              valueFrom: {secretKeyRef: {name: buzz-secrets, key: RABBITMQ_URL}}
+          readinessProbe:
+            httpGet: {path: /health, port: 5003}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: 5003}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+            limits: {cpu: 200m, memory: 192Mi}

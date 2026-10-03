@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="stories-row">
+    <label class="story-add" title="Add a photo story">
+      +
+      <form method="post" action="{{ url_for('new_story') }}" enctype="multipart/form-data" style="display:contents;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="file" name="photo" accept="image/*" style="display:none;" onchange="this.form.submit()">
+      </form>
+    </label>
+    {% for s in stories %}
+      <a class="story-item" href="{{ url_for('view_stories', username=s.username) }}">
+        {% if s.latest.image_url %}<img src="{{ s.latest.image_url }}" alt="">{% endif %}
+        <span>@{{ s.username }}{% if s.count > 1 %} ({{ s.count }}){% endif %}</span>
+      </a>
+    {% endfor %}
+  </div>
+  <details style="margin-top:0.5rem;">
+    <summary style="cursor:pointer; color: var(--text-muted); font-size:0.85rem;">Add a text story</summary>
+    <form method="post" action="{{ url_for('new_story') }}" style="margin-top:0.5rem; display:flex; gap:0.5rem;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="content" placeholder="What's on your mind?" style="flex:1;">
+      <button class="btn btn-sm" type="submit">Post story</button>
+    </form>
+  </details>
+</div>
+
+<div class="card composer">
+  <form method="post" action="{{ url_for('new_post') }}" enctype="multipart/form-data">
+    {{ form.hidden_tag() }}
+    <div class="form-group">
+      {{ form.content(placeholder="What's on your mind?", rows=2) }}
+      {% for e in form.content.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <div class="composer-actions">
+      {{ form.photo() }}
+      <button class="btn" type="submit">Post</button>
+    </div>
+  </form>
+</div>
+
+{% if not has_follows %}
+  <div class="card empty-state">
+    Your feed is empty. <a href="{{ url_for('discover') }}">Discover people to follow</a> to see their posts here.
+  </div>
+{% endif %}
+
+<div class="card">
+  {% if feed %}
+    {% for entry in feed %}{% include "_post_card.html" %}{% endfor %}
+  {% elif has_follows %}
+    <div class="empty-state">No posts yet from people you follow. Be the first to post!</div>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Discover - Darviq Buzz{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Discover</h2>
+  <div class="discover-filter-tabs">
+    <a class="{{ 'active' if account_type_filter == 'all' }}" href="{{ url_for('discover', type='all') }}">Everyone</a>
+    <a class="{{ 'active' if account_type_filter == 'personal' }}" href="{{ url_for('discover', type='personal') }}">People</a>
+    <a class="{{ 'active' if account_type_filter == 'business' }}" href="{{ url_for('discover', type='business') }}">🏢 Businesses</a>
+  </div>
+  {% if users %}
+    {% for u in users %}
+      <div class="user-row">
+        <div class="avatar avatar-sm {{ 'profile-avatar-business' if u.account_type == 'business' }}">
+          {% if u.avatar_url %}<img src="{{ u.avatar_url }}" alt="">{% else %}{{ u.username[0]|upper }}{% endif %}
+        </div>
+        <div class="name">
+          <a href="{{ url_for('profile', username=u.username) }}">{% if u.account_type == 'business' %}🏢 {% endif %}@{{ u.username }}</a>
+          {% if u.account_type == 'business' %}<div class="business-category-badge business-category-badge-sm">{{ u.business_category }}</div>{% endif %}
+          {% if u.bio %}<div style="font-weight:400; color:var(--text-muted); font-size:0.8rem;">{{ u.bio }}</div>{% endif %}
+        </div>
+        {% if u.username in following_set %}
+          <form method="post" action="{{ url_for('unfollow_route', username=u.username) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-secondary btn-sm" type="submit">{{ '✓ Liked' if u.account_type == 'business' else 'Following' }}</button></form>
+        {% else %}
+          <form method="post" action="{{ url_for('follow', username=u.username) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm" type="submit">{{ '👍 Like' if u.account_type == 'business' else 'Follow' }}</button></form>
+        {% endif %}
+        {% if u.account_type != 'business' %}
+        {% set fs = friendship_statuses.get(u.username, 'none') %}
+        {% if fs == 'none' %}
+          <form method="post" action="{{ url_for('send_friend_request', username=u.username) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-secondary btn-sm" type="submit">Add friend</button></form>
+        {% elif fs == 'request_sent' %}
+          <button class="btn btn-secondary btn-sm" disabled>Request sent</button>
+        {% elif fs == 'friends' %}
+          <button class="btn btn-secondary btn-sm" disabled>Friends</button>
+        {% endif %}
+        {% endif %}
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">No one else has joined yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

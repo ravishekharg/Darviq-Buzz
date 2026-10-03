@@ -1,0 +1,165 @@
+# Plain Prometheus (ConfigMap-mounted static scrape config), not the
+# Prometheus Operator's ServiceMonitor CRD -- keeps this deployable with
+# plain `kubectl apply`, no operator/CRDs to install first on the homelab
+# cluster. Scrape targets are k8s Service DNS names, same 11 targets
+# verified locally via docker-compose's prometheus.yml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: darviq-buzz
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 10s
+      evaluation_interval: 10s
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: ["alertmanager:9093"]
+    rule_files:
+      - /etc/prometheus/alerts.yml
+    scrape_configs:
+      - job_name: gateway
+        static_configs: [{targets: ["gateway:5000"]}]
+      - job_name: user-service
+        static_configs: [{targets: ["user-service:5001"]}]
+      - job_name: social-graph-service
+        static_configs: [{targets: ["social-graph-service:5002"]}]
+      - job_name: post-service
+        static_configs: [{targets: ["post-service:5003"]}]
+      - job_name: engagement-service
+        static_configs: [{targets: ["engagement-service:5004"]}]
+      - job_name: story-service
+        static_configs: [{targets: ["story-service:5005"]}]
+      - job_name: messaging-service
+        static_configs: [{targets: ["messaging-service:5006"]}]
+      - job_name: feed-service
+        static_configs: [{targets: ["feed-service:5007"]}]
+      - job_name: notification-service
+        static_configs: [{targets: ["notification-service:5008"]}]
+      - job_name: media-service
+        static_configs: [{targets: ["media-service:5009"]}]
+      - job_name: web-bff
+        static_configs: [{targets: ["web-bff:5010"]}]
+  alerts.yml: |
+    groups:
+      - name: service-availability
+        rules:
+          - alert: ServiceDown
+            expr: up == 0
+            for: 15s
+            labels:
+              severity: critical
+            annotations:
+              summary: "{{ $labels.job }} is down (Prometheus scrape failing)"
+      - name: buzz-http-slo
+        rules:
+          - record: buzz:http_requests:rate5m
+            expr: sum(rate(http_requests_total[5m])) by (service)
+          - record: buzz:http_requests_errors:rate5m
+            expr: sum(rate(http_requests_total{status=~"5.."}[5m])) by (service)
+          - alert: BuzzAvailabilitySLOFastBurn
+            expr: |
+              (
+                sum(rate(http_requests_total{status=~"5.."}[5m])) by (service)
+                /
+                sum(rate(http_requests_total[5m])) by (service)
+              ) > (14 * (1 - 0.999))
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "{{ $labels.service }}: availability SLO (99.9%) burning fast (14x)"
+          - alert: BuzzAvailabilitySLOSlowBurn
+            expr: |
+              (
+                sum(rate(http_requests_total{status=~"5.."}[1h])) by (service)
+                /
+                sum(rate(http_requests_total[1h])) by (service)
+              ) > (6 * (1 - 0.999))
+            for: 15m
+            labels:
+              severity: warning
+            annotations:
+              summary: "{{ $labels.service }}: availability SLO (99.9%) burning slow (6x)"
+          - alert: BuzzLatencySLOBreach
+            expr: |
+              histogram_quantile(0.99,
+                sum(rate(http_request_duration_seconds_bucket[5m])) by (le, service)
+              ) > 1
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "{{ $labels.service }}: P99 latency above the 1s SLO target"
+      - name: buzz-async-pipelines
+        rules:
+          - alert: FeedFanoutStalled
+            expr: rate(feed_events_consumed_total[15m]) == 0
+            for: 15m
+            labels:
+              severity: warning
+            annotations:
+              summary: "feed-service has fanned out no post/repost events in 15m -- check RabbitMQ connectivity"
+          - alert: NotificationConsumerStalled
+            expr: rate(notification_events_consumed_total[15m]) == 0
+            for: 15m
+            labels:
+              severity: warning
+            annotations:
+              summary: "notification-service has consumed no events in 15m -- check RabbitMQ connectivity"
+      - name: buzz-media
+        rules:
+          - alert: MediaS3FallbackRateHigh
+            expr: rate(media_s3_fallback_total[10m]) > 0
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "media-service is falling back to local disk -- S3 credentials/bucket likely misconfigured"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: darviq-buzz
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:latest
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: darviq-buzz
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090
+      nodePort: 30090
+  type: NodePort

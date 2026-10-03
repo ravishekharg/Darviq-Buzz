@@ -1,0 +1,7 @@
+Flask==3.0.2
+SQLAlchemy==2.0.32
+psycopg2-binary==2.9.9
+Flask-Bcrypt==1.0.1
+PyJWT==2.9.0
+prometheus-client==0.20.0
+python-dotenv==1.0.1

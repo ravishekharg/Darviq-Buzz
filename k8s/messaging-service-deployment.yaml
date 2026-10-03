@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: messaging-service
+  namespace: darviq-buzz
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: messaging-service
+  template:
+    metadata:
+      labels:
+        app: messaging-service
+    spec:
+      # Mitigates a confirmed live issue: glibc's parallel A/AAAA DNS
+      # queries occasionally race under load, one leg silently drops,
+      # and the resolver falls through to a bare unqualified query that
+      # CoreDNS can't handle and forwards upstream, timing out. This is
+      # the standard Kubernetes-documented mitigation.
+      dnsConfig:
+        options:
+          - name: single-request-reopen
+      containers:
+        - name: messaging-service
+          image: localhost:5050/darviq-buzz-messaging-service:build-3
+          ports:
+            - containerPort: 5006
+          env:
+            - {name: PORT, value: "5006"}
+            - {name: CASSANDRA_CONTACT_POINTS, value: "cassandra"}
+            - {name: CQLENG_ALLOW_SCHEMA_MANAGEMENT, value: "1"}
+          readinessProbe:
+            httpGet: {path: /health, port: 5006}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: 5006}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+            limits: {cpu: 200m, memory: 192Mi}

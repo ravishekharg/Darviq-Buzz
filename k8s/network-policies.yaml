@@ -1,0 +1,135 @@
+# Ingress-only (egress unrestricted) -- scopes who can call each service without
+# touching DNS/egress). web-bff calls every backend service directly (it's
+# a trusted internal caller, not routed through the gateway -- see
+# services/web-bff/services.py) so most backend policies allow both
+# gateway and web-bff.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-allow-app-services
+  namespace: darviq-buzz
+spec:
+  podSelector:
+    matchLabels: {app: postgres}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - {key: app, operator: In, values: ["user-service", "notification-service", "media-service"]}
+      ports: [{port: 5432}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cassandra-allow-app-services
+  namespace: darviq-buzz
+spec:
+  podSelector:
+    matchLabels: {app: cassandra}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values: ["social-graph-service", "post-service", "engagement-service", "story-service", "messaging-service", "feed-service", "keyspace-init"]
+      ports: [{port: 9042}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rabbitmq-allow-app-services
+  namespace: darviq-buzz
+spec:
+  podSelector:
+    matchLabels: {app: rabbitmq}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values: ["social-graph-service", "post-service", "engagement-service", "feed-service", "notification-service"]
+      ports: [{port: 5672}]
+    - ports: [{port: 15672}] # management UI stays open (NodePort) for homelab debugging
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-services-allow-gateway-and-webbff
+  namespace: darviq-buzz
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: ["user-service", "post-service", "engagement-service", "story-service", "messaging-service", "notification-service", "media-service"]
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - {key: app, operator: In, values: ["gateway", "web-bff"]}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: social-graph-allow-gateway-webbff-feed
+  namespace: darviq-buzz
+spec:
+  podSelector:
+    matchLabels: {app: social-graph-service}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - {key: app, operator: In, values: ["gateway", "web-bff", "feed-service"]}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: feed-service-allow-gateway-and-webbff
+  namespace: darviq-buzz
+spec:
+  podSelector:
+    matchLabels: {app: feed-service}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - {key: app, operator: In, values: ["gateway", "web-bff"]}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway-allow-ingress-controller
+  namespace: darviq-buzz
+spec:
+  podSelector:
+    matchLabels: {app: gateway}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: ingress-nginx}
+      ports: [{port: 5000}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-bff-allow-ingress-controller
+  namespace: darviq-buzz
+spec:
+  podSelector:
+    matchLabels: {app: web-bff}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: ingress-nginx}
+      ports: [{port: 5010}]

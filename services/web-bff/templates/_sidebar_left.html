@@ -1,0 +1,12 @@
+{% if current_username %}
+<div class="card">
+  <div class="shortcut-list">
+    <a href="{{ url_for('profile', username=current_username) }}">👤 My profile</a>
+    <a href="{{ url_for('friends_list', username=current_username) }}">👥 Friends</a>
+    <a href="{{ url_for('discover') }}">🧭 Discover people</a>
+    <a href="{{ url_for('messages_inbox') }}">💬 Messages</a>
+    <a href="{{ url_for('notifications_page') }}">🔔 Notifications</a>
+    <a href="{{ url_for('edit_profile') }}">⚙️ Edit profile</a>
+  </div>
+</div>
+{% endif %}

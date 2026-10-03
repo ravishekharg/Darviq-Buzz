@@ -1,0 +1,13 @@
+# Minimal config: no real Slack/email/PagerDuty integration for a local
+# practice stack -- the "null" receiver still makes fired alerts visible in
+# Alertmanager's own UI/API (http://localhost:9093), which is enough to
+# prove the firing lifecycle without configuring a real external target.
+route:
+  receiver: "default"
+  group_by: ["alertname", "service"]
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 1h
+
+receivers:
+  - name: "default"

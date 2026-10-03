@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Darviq Buzz{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <nav class="navbar">
+    <a class="brand" href="{{ url_for('home') }}">
+      <span class="brand-mark">
+        <svg viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M12 2C12 2 5 9 5 14.5C5 18.64 8.36 22 12.5 22C16.64 22 20 18.64 20 14.5C20 10 15 6 12 2Z" fill="var(--accent)"/>
+          <circle cx="14.5" cy="9" r="2.1" fill="var(--card-bg)"/>
+        </svg>
+      </span>
+      buzz
+    </a>
+    {% if current_username %}
+      <div class="navbar-links">
+        <a href="{{ url_for('home') }}"><span class="nav-icon">🏠</span> Home</a>
+        <a href="{{ url_for('discover') }}"><span class="nav-icon">🧭</span> Discover</a>
+        <a href="{{ url_for('friend_requests_page') }}"><span class="nav-icon">👥</span> Friends
+          {% if incoming_request_count %}<span class="badge">{{ incoming_request_count }}</span>{% endif %}
+        </a>
+        <a href="{{ url_for('messages_inbox') }}"><span class="nav-icon">💬</span> Messages</a>
+        <a href="{{ url_for('notifications_page') }}"><span class="nav-icon">🔔</span> Notifications
+          {% if unread_notification_count %}<span class="badge">{{ unread_notification_count }}</span>{% endif %}
+        </a>
+        <a href="{{ url_for('profile', username=current_username) }}"><span class="nav-icon">👤</span> @{{ current_username }}</a>
+        <a href="{{ url_for('logout') }}"><span class="nav-icon">🚪</span> Log out</a>
+      </div>
+    {% else %}
+      <div class="navbar-links">
+        <a href="{{ url_for('login') }}">Log in</a>
+        <a href="{{ url_for('register') }}" class="btn btn-sm">Sign up</a>
+      </div>
+    {% endif %}
+  </nav>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash flash-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  {% block body %}
+  <div class="layout">
+    <aside class="sidebar-left">
+      {% block sidebar_left %}{% include "_sidebar_left.html" %}{% endblock %}
+    </aside>
+    <main>
+      {% block content %}{% endblock %}
+    </main>
+    <aside class="sidebar-right">
+      {% block sidebar_right %}{% include "_sidebar_right.html" %}{% endblock %}
+    </aside>
+  </div>
+  {% endblock %}
+
+  <script src="{{ url_for('static', filename='js/reactions.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

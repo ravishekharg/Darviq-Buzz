@@ -1,0 +1,100 @@
+# Homelab-only plaintext credentials -- fine for an isolated local kind
+# cluster, not for anything reachable off-box (local development only).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: buzz-secrets
+  namespace: darviq-buzz
+type: Opaque
+stringData:
+  POSTGRES_USER: "buzz"
+  POSTGRES_PASSWORD: "buzz_password"
+  POSTGRES_DB: "buzz"
+  USER_DATABASE_URL: "postgresql://buzz:buzz_password@postgres:5432/buzz_users"
+  NOTIFICATION_DATABASE_URL: "postgresql://buzz:buzz_password@postgres:5432/buzz_notifications"
+  MEDIA_DATABASE_URL: "postgresql://buzz:buzz_password@postgres:5432/buzz_media"
+  SECRET_KEY: "homelab-change-me-secret-key"
+  JWT_SECRET: "homelab-change-me-jwt-secret"
+  RABBITMQ_URL: "amqp://buzz:buzz_password@rabbitmq:5672"
+  RABBITMQ_DEFAULT_USER: "buzz"
+  RABBITMQ_DEFAULT_PASS: "buzz_password"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: darviq-buzz
+data:
+  init.sql: |
+    CREATE DATABASE buzz_users;
+    CREATE DATABASE buzz_notifications;
+    CREATE DATABASE buzz_media;
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: darviq-buzz
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: darviq-buzz
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: buzz-secrets
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "buzz"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data
+        - name: init
+          configMap:
+            name: postgres-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: darviq-buzz
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Friend requests - Darviq Buzz{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Incoming friend requests</h2>
+  {% if incoming %}
+    {% for u in incoming %}
+      <div class="user-row">
+        <div class="avatar avatar-sm">{{ u.username[0]|upper }}</div>
+        <div class="name"><a href="{{ url_for('profile', username=u.username) }}">@{{ u.username }}</a></div>
+        <form method="post" action="{{ url_for('accept_friend_request', username=u.username) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm" type="submit">Accept</button></form>
+        <form method="post" action="{{ url_for('decline_friend_request', username=u.username) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-secondary btn-sm" type="submit">Decline</button></form>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">No incoming requests.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Sent requests</h2>
+  {% if outgoing %}
+    {% for u in outgoing %}
+      <div class="user-row">
+        <div class="avatar avatar-sm">{{ u.username[0]|upper }}</div>
+        <div class="name"><a href="{{ url_for('profile', username=u.username) }}">@{{ u.username }}</a></div>
+        <form method="post" action="{{ url_for('cancel_friend_request', username=u.username) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-secondary btn-sm" type="submit">Cancel</button></form>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">No pending sent requests.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,117 @@
+// Homelab CI/CD pipeline for the WSL kind cluster -- distinct from the
+// stale root Jenkinsfile (built for the old single-container "social-app"
+// image and never touches the real 11-service architecture). Shares the
+// "darviq-homelab" kind cluster and a local registry (localhost:5050),
+// deployed into its own "darviq-buzz" namespace.
+//
+// There is no separate migrate/seed stage: every service creates
+// its own tables/keyspaces on startup (Postgres via SQLAlchemy's
+// create_all, Cassandra via cqlengine's sync_table).
+pipeline {
+    agent any
+
+    environment {
+        REGISTRY = "localhost:5050"
+        TAG = "build-${BUILD_NUMBER}"
+    }
+
+    stages {
+        stage('Build') {
+            steps {
+                script {
+                    def services = [
+                        'gateway', 'user-service', 'social-graph-service', 'post-service',
+                        'engagement-service', 'story-service', 'messaging-service',
+                        'feed-service', 'notification-service', 'media-service', 'web-bff',
+                    ]
+                    for (svc in services) {
+                        sh "docker build -t ${REGISTRY}/darviq-buzz-${svc}:${TAG} services/${svc}/"
+                    }
+                }
+            }
+        }
+
+        stage('Push') {
+            steps {
+                script {
+                    def services = [
+                        'gateway', 'user-service', 'social-graph-service', 'post-service',
+                        'engagement-service', 'story-service', 'messaging-service',
+                        'feed-service', 'notification-service', 'media-service', 'web-bff',
+                    ]
+                    for (svc in services) {
+                        sh "docker push ${REGISTRY}/darviq-buzz-${svc}:${TAG}"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy Infra') {
+            steps {
+                // Idempotent -- safe to reapply every build.
+                sh "kubectl apply -f k8s/namespace.yaml"
+                sh "kubectl apply -f k8s/postgres.yaml"
+                sh "kubectl apply -f k8s/cassandra.yaml"
+                sh "kubectl apply -f k8s/rabbitmq.yaml"
+                sh "kubectl apply -f k8s/prometheus.yaml"
+                sh "kubectl apply -f k8s/alertmanager.yaml"
+                sh "kubectl apply -f k8s/network-policies.yaml"
+                sh "kubectl apply -f k8s/gateway-service.yaml"
+                sh "kubectl apply -f k8s/user-service-service.yaml"
+                sh "kubectl apply -f k8s/social-graph-service-service.yaml"
+                sh "kubectl apply -f k8s/post-service-service.yaml"
+                sh "kubectl apply -f k8s/engagement-service-service.yaml"
+                sh "kubectl apply -f k8s/story-service-service.yaml"
+                sh "kubectl apply -f k8s/messaging-service-service.yaml"
+                sh "kubectl apply -f k8s/feed-service-service.yaml"
+                sh "kubectl apply -f k8s/notification-service-service.yaml"
+                sh "kubectl apply -f k8s/media-service-service.yaml"
+                sh "kubectl apply -f k8s/web-bff-service.yaml"
+                sh "kubectl apply -f k8s/ingress.yaml"
+                sh "kubectl -n darviq-buzz wait --for=condition=ready pod -l app=postgres --timeout=120s"
+                sh "kubectl -n darviq-buzz wait --for=condition=ready pod -l app=cassandra --timeout=180s"
+                sh "kubectl -n darviq-buzz wait --for=condition=ready pod -l app=rabbitmq --timeout=120s"
+                sh "kubectl -n darviq-buzz delete job keyspace-init --ignore-not-found"
+                sh "kubectl apply -f k8s/cassandra.yaml" // reapplies the Job too (idempotent CREATE KEYSPACE IF NOT EXISTS)
+                sh "kubectl -n darviq-buzz wait --for=condition=complete job/keyspace-init --timeout=120s"
+            }
+        }
+
+        stage('Deploy Apps') {
+            steps {
+                script {
+                    def apps = [
+                        'gateway', 'user-service', 'social-graph-service', 'post-service',
+                        'engagement-service', 'story-service', 'messaging-service',
+                        'feed-service', 'notification-service', 'media-service', 'web-bff',
+                    ]
+                    for (app in apps) {
+                        // Apply (creates with the placeholder image on a first-ever
+                        // deploy) then set the real build-tagged image.
+                        sh "kubectl apply -f k8s/${app}-deployment.yaml"
+                        sh "kubectl -n darviq-buzz set image deployment/${app} ${app}=${REGISTRY}/darviq-buzz-${app}:${TAG}"
+                    }
+                    for (app in apps) {
+                        sh "kubectl -n darviq-buzz rollout status deployment/${app} --timeout=180s"
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test') {
+            steps {
+                sh "kubectl -n darviq-buzz run smoke-test-${BUILD_NUMBER} --rm -i --restart=Never --image=curlimages/curl --command -- curl -sf http://web-bff:5010/health"
+                sh "kubectl -n darviq-buzz run smoke-test-api-${BUILD_NUMBER} --rm -i --restart=Never --image=curlimages/curl --command -- curl -sf http://gateway:5000/api/health"
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Build ${TAG} deployed and smoke-tested successfully."
+        }
+        failure {
+            echo "Build failed - check the failing stage above."
+        }
+    }
+}
